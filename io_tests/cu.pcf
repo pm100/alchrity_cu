@@ -95,3 +95,7 @@ set_io -nowarn IO_SEG[5] L1 # AB3
 set_io -nowarn IO_SEG[6] M1 # AB2
 set_io -nowarn IO_SEG[7] P1 # AB49
 
+set_io -nowarn UART_TX M9
+set_io -nowarn UART_RX P14
+
+
