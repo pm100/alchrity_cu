@@ -1,0 +1,22 @@
+cores:
+  my_io_core:
+    type: io
+
+    inputs:
+      val0: 4
+
+  my_logic_analyzer:
+    type: logic_analyzer
+    sample_depth: 4096
+    trigger_location: 1000
+
+    probes:
+      value: 4
+      sw0: 1
+    triggers:
+      - sw0 RISING
+
+uart:
+  port: "COM6"
+  baudrate: 115200
+  clock_freq: 100_000_000

@@ -1,12 +1,15 @@
 
 `include "../lib/al_cu/io_lcd.v"
+`include "../lib/ice40/hex_ascii.v"
 
 module top (
     input clk,
     input rst,
     output [3:0] IO_AN,
     output [7:0] IO_SEG,
-    input [4:0] IO_SW
+    input [4:0] IO_SW,
+    output UART_TX,
+    input UART_RX
 );
 
   io_lcd io_lcd (
@@ -43,4 +46,14 @@ module top (
     value[3] = 0;
   end
 
+  manta manta_inst (
+      .clk(clk),
+      .rst(rst),
+      .rx(UART_RX),
+      .tx(UART_TX),
+      .sw0(IO_SW[0]),
+      //.select(IO_AN),
+      .val0(value[0]),
+      .value(value[0])
+  );
 endmodule
