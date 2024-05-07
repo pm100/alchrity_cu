@@ -22,10 +22,10 @@ module shell_tb ();
   wire [7:0] w_RX_Byte;
   parameter c_CLOCK_PERIOD_NS = 40;
   parameter c_CLKS_PER_BIT = 217 * 4;
-  parameter c_BIT_PERIOD = 8600;
+  parameter c_BIT_PERIOD = 8600 * 4;
   always #(c_CLOCK_PERIOD_NS / 2) r_Clock <= !r_Clock;
   initial begin
-    #20__000_000;  // Wait a long time in simulation units (adjust as needed).
+    #10__000_000;  // Wait a long time in simulation units (adjust as needed).
     $display("Caught by trap");
     $finish;
   end
@@ -69,51 +69,53 @@ module shell_tb ();
 
     $dumpfile(`DUMPSTR(`VCD_OUTPUT));
     $dumpvars(0, shell_tb);
-    // $dumpvars(0, UUT.romloader.r_RX_Cmd_Array[0]);
-    // $dumpvars(0, UUT.romloader.r_RX_Cmd_Array[1]);
-    // $dumpvars(0, UUT.romloader.r_RX_Cmd_Array[2]);
-    // $dumpvars(0, UUT.romloader.r_RX_Cmd_Array[3]);
-    // $dumpvars(0, UUT.romloader.r_RX_Cmd_Array[4]);
-    // $dumpvars(0, UUT.romloader.r_RX_Cmd_Array[5]);
-    // $dumpvars(0, UUT.romloader.r_RX_Cmd_Array[6]);
-    // $dumpvars(0, UUT.romloader.r_RX_Cmd_Array[7]);
-    // $dumpvars(0, UUT.romloader.r_RX_Cmd_Array[8]);
-    // $dumpvars(0, UUT.romloader.r_RX_Cmd_Array[9]);
+    $dumpvars(0, UUT.r_RX_Cmd_Array[0]);
+    $dumpvars(0, UUT.r_RX_Cmd_Array[1]);
+    $dumpvars(0, UUT.r_RX_Cmd_Array[2]);
+    $dumpvars(0, UUT.r_RX_Cmd_Array[3]);
+    $dumpvars(0, UUT.r_RX_Cmd_Array[4]);
+    $dumpvars(0, UUT.r_RX_Cmd_Array[5]);
+    $dumpvars(0, UUT.r_RX_Cmd_Array[6]);
+    $dumpvars(0, UUT.r_RX_Cmd_Array[7]);
+    $dumpvars(0, UUT.r_RX_Cmd_Array[8]);
+    $dumpvars(0, UUT.r_RX_Cmd_Array[9]);
     // $dumpvars(0, UUT.RAM.r_Mem[0]);
     // $dumpvars(0, UUT.RAM.r_Mem[1]);
-    // $dumpvars(0, UUT.RAM.r_Mem[2]);
+    //$dumpvars(0, UUT.RAM.r_Mem[2]);
     // Send a command to the UART (exercise Rx)
-    // #5 @(posedge r_Clock);
-    // UART_WRITE_BYTE("w");
-    // #5 @(posedge r_Clock);
-    // UART_WRITE_BYTE("r");
-    // #5 @(posedge r_Clock);
-    // UART_WRITE_BYTE(" ");
-    // #5 @(posedge r_Clock);
-    // UART_WRITE_BYTE("0");
-    // #5 @(posedge r_Clock);
-    // UART_WRITE_BYTE("0");
-    // #5 @(posedge r_Clock);
-    // UART_WRITE_BYTE("1");
-    // #5 @(posedge r_Clock);
-    // UART_WRITE_BYTE("1");
-    // #5 @(posedge r_Clock);
-    // UART_WRITE_BYTE(" ");
-    // #5 @(posedge r_Clock);
-    // UART_WRITE_BYTE("1");
-    // #5 @(posedge r_Clock);
-    // UART_WRITE_BYTE("1");
-    // #5 @(posedge r_Clock);
-    // UART_WRITE_BYTE("1");
-    // #5 @(posedge r_Clock);
-    // UART_WRITE_BYTE("1");
+    #50000 @(posedge r_Clock);
+    UART_WRITE_BYTE("r");
     #5 @(posedge r_Clock);
-    UART_WRITE_BYTE("g");
+    UART_WRITE_BYTE("d");
     #5 @(posedge r_Clock);
     UART_WRITE_BYTE(" ");
     #5 @(posedge r_Clock);
-    #1 UART_WRITE_BYTE(8'h0D);
-    //   #100000
+    UART_WRITE_BYTE("0");
+    #5 @(posedge r_Clock);
+    UART_WRITE_BYTE("0");
+    #5 @(posedge r_Clock);
+    UART_WRITE_BYTE("0");
+    #5 @(posedge r_Clock);
+    UART_WRITE_BYTE("0");
+    #5 UART_WRITE_BYTE(8'h0D);
+
+    // #5 @(posedge r_Clock);
+    // UART_WRITE_BYTE(" ");
+    // #5 @(posedge r_Clock);
+    // UART_WRITE_BYTE("1");
+    // #5 @(posedge r_Clock);
+    // UART_WRITE_BYTE("1");
+    // #5 @(posedge r_Clock);
+    // UART_WRITE_BYTE("1");
+    // #5 @(posedge r_Clock);
+    // UART_WRITE_BYTE("1");
+    // #5 @(posedge r_Clock);
+    // UART_WRITE_BYTE("g");
+    // #5 @(posedge r_Clock);
+    // UART_WRITE_BYTE(" ");
+    // #5 @(posedge r_Clock);
+    // #1 UART_WRITE_BYTE(8'h0D);
+    // //   #100000
     //     UART_WRITE_BYTE(8'h30);
     // Check that the correct command was received
     if (w_RX_Byte == 8'h37) $display("Test Passed - Correct Byte Received");

@@ -1,7 +1,8 @@
 `include "../lib/al_cu/io_lcd.v"
 `include "../lib/ice40/uart_rx.v"
 `include "../lib/ice40/uart_tx.v"
-`include "../lib/ice40/hex_ascii.v"
+
+
 module uart (
     input clk,
     input rst,
