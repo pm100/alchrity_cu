@@ -19,8 +19,12 @@ module Shell (
 
 );
 
+  initial begin
+    r_reset <= 0;
+  end
+
   `include "../lib/ice40/hex_ascii.v"
-  // reset logic
+  // power up reset logic
   reg [3:0] r_reset;
   always @(posedge CLK) begin
     if (r_reset[3] == 0) begin
@@ -28,19 +32,16 @@ module Shell (
     end
   end
   wire w_reset = r_reset[3] == 0 ? 1'b0 : RST;
+
   wire [15:0] w_ROM_bus;
   wire [15:0] w_o_ROM_data;
-  // assign w_ROM_bus = r_RX_Cmd_Data;//(w_Bus_CS && r_command_state == WRITE_ROM) ? r_RX_Cmd_Data : 16'hZZ;
   wire w_Bus_CS;
   wire i_Bus_Rd_DV;
   reg [15:0] r_Bus_Rd_Data;
-  //wire o_go;
-
   reg r_Bus_Wr_Rd_n;
 
-  // assign i_Bus_Rd_Data = w_ROM_bus;
 
-  // address read from coomand fro read or write
+  // address read from coomand for read or write
   reg [15:0] r_RX_Cmd_Addr;
   // data read from uart for write command
   reg [15:0] r_RX_Cmd_Data;
@@ -82,15 +83,10 @@ module Shell (
   reg r_TX_Cmd_Start;
   reg r_command_completed;
 
-  // run
-  reg o_go;
+  // 0 means shell active, 1 means cpu running
+  reg r_running;
 
-  // initial begin
-  //   r_RX_Index <= 0;
-  //   r_TX_Index <= 0;
-  //   r_TX_Cmd_Length <= 0;
-  //   r_RX_Cmd_Length <= 0;
-  // end
+
 
   // read command from uart, buffer into r_RX_Cmd_Array
   always @(posedge CLK) begin
@@ -98,7 +94,6 @@ module Shell (
       r_RX_Index <= 0;
       r_RX_Cmd_Length <= 0;
     end else begin
-      //  r_command_state <= NONE;
       r_RX_Cmd_Done <= 1'b0;
       if (w_RX_DV == 1'b1) begin
         // data is buffered here, but length updated later
@@ -127,21 +122,13 @@ module Shell (
   always @(posedge CLK) begin
     if (~w_reset) begin
       r_command_state <= NONE;
-      // r_RX_Cmd_Rd    <= 1'b0;
-      //  r_RX_Cmd_Wr    <= 1'b0;
-      //  r_RX_Cmd_Error <= 1'b0;
     end else begin
       // Default Assignments
-      //    r_RX_Cmd_Rd    <= 1'b0;
-      //   r_RX_Cmd_Wr    <= 1'b0;
-      //   r_RX_Cmd_Error <= 1'b0;
-      /*if (r_command_completed)*/ r_command_state <= NONE;
+      r_command_state <= NONE;
       r_command_processed <= 0;
-      leds[0] <= 0;
-      leds[7] <= 0;
       if (r_RX_Cmd_Done == 1'b1) begin
         // Decode Read Command
-        leds[0] <= 1;
+        //leds[0] <= 1;
         // rd xxxx, reply 0xxxxx
         if (r_RX_Cmd_Array[0] == "r" && r_RX_Cmd_Array[1] == "d" && r_RX_Cmd_Array[2] == " ") begin
           r_command_state <= READ_ROM;
@@ -154,7 +141,6 @@ module Shell (
           if (r_RX_Cmd_Length == 12) begin
             r_command_state <= WRITE_ROM;
             r_command_processed <= 1;
-            leds[7] <= 1;
             r_RX_Cmd_Data <= {
               f_ASCII_To_Hex(r_RX_Cmd_Array[8]),
               f_ASCII_To_Hex(r_RX_Cmd_Array[9]),
@@ -179,8 +165,6 @@ module Shell (
             f_ASCII_To_Hex(r_RX_Cmd_Array[6])
           };
         end
-
-
       end
     end
   end
@@ -191,120 +175,103 @@ module Shell (
   // // Perform a read or write to Bus based on cmd from UART
   always @(posedge CLK) begin
     if (~w_reset) begin
-      // r_Bus_CS <= 1'b0;
-      leds[2] <= 0;
+      r_running <= 1'b0;
     end else if (r_command_processed) begin
-      leds[2] <= 0;
       r_bus_write <= 0;
-
       case (r_command_state)
         READ_ROM: begin
-          // r_Bus_CS      <= 1'b1;
-          //  r_Bus_Wr_Rd_n <= 1'b1;
-          leds[2] <= 1;
-          // r_Bus_Rd_Data <= w_o_ROM_data;
         end
         WRITE_ROM: begin
           r_bus_write <= 1;
-
-          // r_Bus_CS <= 1'b1;
-          //r_Bus_Wr_Rd_n <= 1'b0;
-          // o_Bus_Wr_Data <= r_RX_Cmd_Data;
         end
         RUN: begin
-          //  r_Bus_CS      <= 1'b1;
-          //   r_Bus_Wr_Rd_n <= 1'b1;
-          o_go <= 1;
+          r_running <= 1'b1;
         end
         default: begin
-          // o_Bus_CS      <= 1'b0;
-          // r_Bus_Wr_Rd_n <= 1'b0;
         end
       endcase
     end
   end
-
+  always @* begin
+    leds[0] <= r_running;
+  end
 
   // Form a command response to a Received Command
   always @(posedge CLK) begin
     if (~w_reset) begin
       r_TX_Cmd_Start <= 1'b0;
-      leds[5] <= 0;
-      leds[6] <= 0;
 
     end else begin
       r_TX_Cmd_Start <= 1'b0;
       r_command_completed <= 0;
-      //leds[5] <= 0;
       // Erroneous Command Response
-      if (r_command_state == ERROR) begin
+      case (r_command_state)
+        ERROR: begin
 
-        r_TX_Cmd_Array[0] <= "\n";
-        r_TX_Cmd_Array[1] <= f_Hex_To_ASCII(0);
-        r_TX_Cmd_Array[2] <= f_Hex_To_ASCII(r_RX_Cmd_Length[3:0]);
+          r_TX_Cmd_Array[0] <= "\n";
+          r_TX_Cmd_Array[1] <= f_Hex_To_ASCII(0);
+          r_TX_Cmd_Array[2] <= f_Hex_To_ASCII(r_RX_Cmd_Length[3:0]);
 
-        r_TX_Cmd_Array[3] <= "\015";
-        r_TX_Cmd_Array[4] <= "\n";
-        r_TX_Cmd_Array[5] <= "\n";
-        r_TX_Cmd_Length   <= 5;
-        r_TX_Cmd_Start    <= 1'b1;
-        r_command_completed <= 1;
-        //r_command_state   <= NONE;
+          r_TX_Cmd_Array[3] <= "\015";
+          r_TX_Cmd_Array[4] <= "\n";
+          r_TX_Cmd_Array[5] <= "\n";
+          r_TX_Cmd_Length   <= 5;
+          r_TX_Cmd_Start    <= 1'b1;
+          r_command_completed <= 1;
+        end  // Read Command Response
+        READ_ROM: begin
+          r_TX_Cmd_Array[0] <= "\n";
+          r_TX_Cmd_Array[1] <= "0";
+          r_TX_Cmd_Array[2] <= "X";
+          r_TX_Cmd_Array[3] <= f_Hex_To_ASCII(w_o_ROM_data[15:12]);
+          r_TX_Cmd_Array[4] <= f_Hex_To_ASCII(w_o_ROM_data[11:8]);
+          r_TX_Cmd_Array[5] <= f_Hex_To_ASCII(w_o_ROM_data[7:4]);
+          r_TX_Cmd_Array[6] <= f_Hex_To_ASCII(w_o_ROM_data[3:0]);
+          r_TX_Cmd_Array[7] <="\015";
+          r_TX_Cmd_Array[8] <= "\n";
+          r_TX_Cmd_Length   <= 9;
+          r_TX_Cmd_Start    <= 1'b1;
+          r_command_completed <= 1;
+        end  // Write Command Response
+        WRITE_ROM: begin
+          leds[6] <= 1;
+          r_TX_Cmd_Array[0] <= "\n";
+          r_TX_Cmd_Array[1] <= "o";
+          r_TX_Cmd_Array[2] <= "k";
+          r_TX_Cmd_Array[3] <= f_Hex_To_ASCII(r_RX_Cmd_Addr[15:12]);
+          r_TX_Cmd_Array[4] <= f_Hex_To_ASCII(r_RX_Cmd_Addr[11:8]);
+          r_TX_Cmd_Array[5] <= f_Hex_To_ASCII(r_RX_Cmd_Addr[7:4]);
+          r_TX_Cmd_Array[6] <= f_Hex_To_ASCII(r_RX_Cmd_Addr[3:0]);
 
+          r_TX_Cmd_Array[7] <= f_Hex_To_ASCII(r_RX_Cmd_Data[15:12]);
+          r_TX_Cmd_Array[8] <= f_Hex_To_ASCII(r_RX_Cmd_Data[11:8]);
+          r_TX_Cmd_Array[9] <= f_Hex_To_ASCII(r_RX_Cmd_Data[7:4]);
+          r_TX_Cmd_Array[10] <= f_Hex_To_ASCII(r_RX_Cmd_Data[3:0]);
 
-      end // if (r_RX_Cmd_Error == 1'b1)
+          r_TX_Cmd_Array[11] <= "\n";
+          r_TX_Cmd_Array[12] <= "\015";
+          r_TX_Cmd_Length   <= 13;
+          r_TX_Cmd_Start    <= 1'b1;
+          r_command_completed <= 1;
 
-     // Read Command Response
-      else if (r_command_state == READ_ROM) begin
-        leds[5] <= 1;
-        r_TX_Cmd_Array[0] <= "\n";
-        r_TX_Cmd_Array[1] <= "0";
-        r_TX_Cmd_Array[2] <= "X";
-        r_TX_Cmd_Array[3] <= f_Hex_To_ASCII(w_o_ROM_data[15:12]);
-        r_TX_Cmd_Array[4] <= f_Hex_To_ASCII(w_o_ROM_data[11:8]);
-        r_TX_Cmd_Array[5] <= f_Hex_To_ASCII(w_o_ROM_data[7:4]);
-        r_TX_Cmd_Array[6] <= f_Hex_To_ASCII(w_o_ROM_data[3:0]);
-        r_TX_Cmd_Array[7] <="\015";
-        r_TX_Cmd_Array[8] <= "\n";
-        // r_TX_Cmd_Array[9] <= ASCII_LF;
-        r_TX_Cmd_Length   <= 9;
-        r_TX_Cmd_Start    <= 1'b1;
-        r_command_completed <= 1;
-        //r_command_state   <= NONE;
-
-      end // if (i_Bus_Rd_DV == 1'b1)
-
-      // Write Command Response
-      else if (r_command_state == WRITE_ROM) begin
-        leds[6] <= 1;
-        r_TX_Cmd_Array[0] <= "\n";
-        r_TX_Cmd_Array[1] <= "o";
-        r_TX_Cmd_Array[2] <= "k";
-
-        r_TX_Cmd_Array[3] <= f_Hex_To_ASCII(r_RX_Cmd_Addr[15:12]);
-        r_TX_Cmd_Array[4] <= f_Hex_To_ASCII(r_RX_Cmd_Addr[11:8]);
-        r_TX_Cmd_Array[5] <= f_Hex_To_ASCII(r_RX_Cmd_Addr[7:4]);
-        r_TX_Cmd_Array[6] <= f_Hex_To_ASCII(r_RX_Cmd_Addr[3:0]);
-
-        r_TX_Cmd_Array[7] <= f_Hex_To_ASCII(r_RX_Cmd_Data[15:12]);
-        r_TX_Cmd_Array[8] <= f_Hex_To_ASCII(r_RX_Cmd_Data[11:8]);
-        r_TX_Cmd_Array[9] <= f_Hex_To_ASCII(r_RX_Cmd_Data[7:4]);
-        r_TX_Cmd_Array[10] <= f_Hex_To_ASCII(r_RX_Cmd_Data[3:0]);
-
-        r_TX_Cmd_Array[11] <= "\n";
-        r_TX_Cmd_Array[12] <= "\015";
-        r_TX_Cmd_Length   <= 13;
-        r_TX_Cmd_Start    <= 1'b1;
-        r_command_completed <= 1;
-        //r_command_state   <= NONE;
-
-      end
-      //r_command_processed <= 0;
+        end
+        RUN: begin
+          r_TX_Cmd_Array[0] <= "\n";
+          r_TX_Cmd_Array[1] <= "r";
+          r_TX_Cmd_Array[2] <= "u";
+          r_TX_Cmd_Array[3] <= "n";
+          r_TX_Cmd_Array[4] <= "\015";
+          r_TX_Cmd_Array[5] <= "\n";
+          r_TX_Cmd_Length   <= 6;
+          r_TX_Cmd_Start    <= 1'b1;
+          r_command_completed <= 1;
+        end
+      endcase
     end
   end
-
   // the hack system we are running
-  wire [15:0] xx = r_RX_Cmd_Data;
+
+  wire [15:0] w_7seg;
   System hack (
       .CLK(CLK),
 
@@ -317,14 +284,17 @@ module Shell (
 
       .bus_RAM_write(),
       .bus_ROM_write(r_bus_write),
-      .bus_ROM_cs(w_Bus_CS)
+      .bus_ROM_cs(w_Bus_CS),
+
+      .o_7seg(w_7seg),
+
+      .i_mode(r_running)
 
   );
   //==============================================================================
   //         beyond here is all plumbing and hw debugging support
   //==============================================================================
   wire w_RX_DV;
-  // *4 because we are running at 100mhz, not 25mhz on the go board
 
 
 
@@ -410,8 +380,8 @@ module Shell (
               r_TX_Index <= r_TX_Index + 1;
               r_SM_Main <= TX_START;
             end
-          end  // if (w_TX_Done == 1'b1)
-        end  // case: TX_WAIT_DONE
+          end
+        end
 
         TX_DONE: r_SM_Main <= IDLE;
 
@@ -421,6 +391,9 @@ module Shell (
 
     end
   end
+
+  // *4 because we are running at 100mhz, not 25mhz on the go board
+
   UART_RX #(
       .CLKS_PER_BIT(217 * 4)
   ) UART_RX_Inst (
@@ -477,22 +450,7 @@ module Shell (
   assign LED[6] = leds[6];
   assign LED[7] = leds[7];
 
-  initial begin
-    value[0] <= 0;
-    //   value[1]  = 0;
-    //   value[2]  = 0;
-    //   value[3]  = 0;
-    //   // leds[0]=0;
-    //   // leds[1]=0;
-    //   // leds[2]=0;
-    //   // leds[3]=0;
-    //   // leds[4]=0;
-    //   // leds[5]=0;
-    //   // leds[6]=0;
-    //   // leds[7]=0;
-    //   r_SM_Main = IDLE;
 
-  end
 
   reg [7:0] r_byte;  // = 8'h42;
   always @(posedge CLK) begin
@@ -511,16 +469,23 @@ module Shell (
       // leds[7] <= 0;
 
     end else begin
-      value[3] <= r_command_state;
-      value[2] <= r_RX_Cmd_Length[3:0];
-      //leds[7] <= r_RX_Cmd_Wr;
-      if (w_RX_DV == 1'b1) begin
-        r_RX_Byte <= w_RX_Byte;
-        r_byte <= w_RX_Byte;
-        value[0] <= w_RX_Byte[3:0];
-        value[1] <= w_RX_Byte[7:4];
-        //value[2] <= r_RX_Index[3:0];
+      if (r_running == 1'b1) begin
+        value[0] <= w_7seg[3:0];
+        value[1] <= w_7seg[7:4];
+        value[2] <= w_7seg[11:8];
+        value[3] <= w_7seg[15:12];
+      end else begin
+        value[3] <= r_command_state;
+        value[2] <= r_RX_Cmd_Length[3:0];
 
+        if (w_RX_DV == 1'b1) begin
+          r_RX_Byte <= w_RX_Byte;
+          r_byte <= w_RX_Byte;
+          value[0] <= w_RX_Byte[3:0];
+          value[1] <= w_RX_Byte[7:4];
+          //value[2] <= r_RX_Index[3:0];
+
+        end
       end
     end
   end

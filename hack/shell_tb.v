@@ -84,7 +84,7 @@ module shell_tb ();
     //$dumpvars(0, UUT.RAM.r_Mem[2]);
     // Send a command to the UART (exercise Rx)
     #50000 @(posedge r_Clock);
-    UART_WRITE_BYTE("r");
+    UART_WRITE_BYTE("g");
     #5000 @(posedge r_Clock);
     // UART_WRITE_BYTE("d");
     // #5000 @(posedge r_Clock);
@@ -118,8 +118,8 @@ module shell_tb ();
     // //   #100000
     //     UART_WRITE_BYTE(8'h30);
     // Check that the correct command was received
-    if (w_RX_Byte == 8'h37) $display("Test Passed - Correct Byte Received");
-    else $display("Test Failed - Incorrect Byte Received");
-    //#3000 $finish;
+    //if (w_RX_Byte == 8'h37) $display("Test Passed - Correct Byte Received");
+    //else $display("Test Failed - Incorrect Byte Received");
+    #3000 $finish;
   end
 endmodule
