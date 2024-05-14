@@ -53,19 +53,7 @@ module CPU (
       .o_zr(zr),
       .o_ng(ng)
   );
-  // always @(negedge clk) begin
-  //   if (i_reset) begin
-  //     pc <= 16'b0;
-  //   end else begin
-  //     if ((i_instruction[15]) &&
-  //       ((i_instruction[0] && ~zr && ~ng) ||
-  //       (i_instruction[1] && zr ) ||
-  //       (i_instruction[2] && ng)
-  //        ))
-  //       pc <= A;
-  //     else pc <= pc + 1;
-  //   end
-  // end
+
   always @(posedge clk) begin
     if (i_reset) begin
       pc <= 16'b0;
