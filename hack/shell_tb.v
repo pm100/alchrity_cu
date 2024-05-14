@@ -5,16 +5,17 @@
 `define DUMPSTR(x) `"x.vcd`"
 module shell_tb ();
 
-
+  reg r_reset;
   Shell UUT (
       .CLK(   r_Clock ),
-      .RST(),
+      .RST(r_reset),
       .UART_RX(r_RX_Serial),
       .UART_TX(r_TX_Serial)
       // .IO_AN(IO_AN),
       // .IO_SEG(IO_SEG)
       // .IO_SW(IO_SW)
   );
+
 
 
   reg r_Clock = 0;
@@ -79,6 +80,15 @@ module shell_tb ();
     $dumpvars(0, UUT.r_RX_Cmd_Array[7]);
     $dumpvars(0, UUT.r_RX_Cmd_Array[8]);
     $dumpvars(0, UUT.r_RX_Cmd_Array[9]);
+    $dumpvars(0, UUT.hack.RAM[0]);
+    $dumpvars(0, UUT.hack.RAM[1]);
+    $dumpvars(0, UUT.hack.RAM[2]);
+    $dumpvars(0, UUT.value[0]);
+    $dumpvars(0, UUT.value[1]);
+    $dumpvars(0, UUT.value[2]);
+    r_reset <= 1;
+    #100 r_reset <= 0;
+    #100 r_reset <= 1;
     // $dumpvars(0, UUT.RAM.r_Mem[0]);
     // $dumpvars(0, UUT.RAM.r_Mem[1]);
     //$dumpvars(0, UUT.RAM.r_Mem[2]);
@@ -120,6 +130,6 @@ module shell_tb ();
     // Check that the correct command was received
     //if (w_RX_Byte == 8'h37) $display("Test Passed - Correct Byte Received");
     //else $display("Test Failed - Incorrect Byte Received");
-    #3000 $finish;
+    #30000 $finish;
   end
 endmodule

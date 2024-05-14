@@ -12,21 +12,45 @@ module Shell (
     input UART_RX,
     input RST,  // low is reset
 
-    output [3:0] IO_AN,
-    output [7:0] IO_SEG,
+    output [ 3:0] IO_AN,
+    output [ 7:0] IO_SEG,
+    output [23:0] IO_LED,
+    output [ 7:0] LED,
 
-    output [7:0] LED
+    input [4:0] IO_SW
 
 );
+  wire new_clk;
+  Shell_pll Shell_pll_inst (
+      .REFERENCECLK(CLK),
+      .PLLOUTCORE(new_clk),
+      .PLLOUTGLOBAL(),
+      .RESET(RST)
+  );
 
+  reg [3:0] r_pll_reset;
+  initial begin
+    r_pll_reset <= 0;
+  end
+
+
+  // pll power up reset logic
+
+  always @(posedge CLK) begin
+    if (r_pll_reset[3] == 0) begin
+      r_pll_reset <= r_pll_reset + 1;
+    end
+  end
+  wire w_pll_reset = r_pll_reset[3] == 0 ? 1'b0 : RST;
+
+
+  // power up reset logic
+
+  reg [3:0] r_reset;
   initial begin
     r_reset <= 0;
   end
-
-  `include "../lib/ice40/hex_ascii.v"
-  // power up reset logic
-  reg [3:0] r_reset;
-  always @(posedge CLK) begin
+  always @(posedge new_clk) begin
     if (r_reset[3] == 0) begin
       r_reset <= r_reset + 1;
     end
@@ -40,7 +64,7 @@ module Shell (
   reg [15:0] r_Bus_Rd_Data;
   reg r_Bus_Wr_Rd_n;
 
-
+  `include "../lib/ice40/hex_ascii.v"
   // address read from coomand for read or write
   reg [15:0] r_RX_Cmd_Addr;
   // data read from uart for write command
@@ -89,7 +113,7 @@ module Shell (
 
 
   // read command from uart, buffer into r_RX_Cmd_Array
-  always @(posedge CLK) begin
+  always @(posedge new_clk) begin
     if (~w_reset) begin
       r_RX_Index <= 0;
       r_RX_Cmd_Length <= 0;
@@ -119,7 +143,7 @@ module Shell (
   end
 
   // Decode received command.  Parses command and acts accordingly.
-  always @(posedge CLK) begin
+  always @(posedge new_clk) begin
     if (~w_reset) begin
       r_command_state <= NONE;
     end else begin
@@ -130,13 +154,13 @@ module Shell (
         // Decode Read Command
         //leds[0] <= 1;
         // rd xxxx, reply 0xxxxx
-        if (r_RX_Cmd_Array[0] == "r" && r_RX_Cmd_Array[1] == "d" && r_RX_Cmd_Array[2] == " ") begin
+        if (r_RX_Cmd_Array[0] == "r" && r_RX_Cmd_Array[1] == "d" && r_RX_Cmd_Array[2] == " " && ~r_running) begin
           r_command_state <= READ_ROM;
           r_command_processed <= 1;
         end  // wr xxxx yyyy, response OKxxxxyyyy
         else if (r_RX_Cmd_Array[0] == "w" &&
                  r_RX_Cmd_Array[1] == "r" &&
-                 r_RX_Cmd_Array[2] == " ")
+                 r_RX_Cmd_Array[2] == " "  && ~r_running)
                  begin
           if (r_RX_Cmd_Length == 12) begin
             r_command_state <= WRITE_ROM;
@@ -173,7 +197,7 @@ module Shell (
   assign w_Bus_CS = (r_command_state == WRITE_ROM || r_command_state == READ_ROM) ? 1'b1 : 1'b0;
 
   // // Perform a read or write to Bus based on cmd from UART
-  always @(posedge CLK) begin
+  always @(posedge new_clk) begin
     if (~w_reset) begin
       r_running <= 1'b0;
     end else if (r_command_processed) begin
@@ -185,7 +209,7 @@ module Shell (
           r_bus_write <= 1;
         end
         RUN: begin
-          r_running <= 1'b1;
+          r_running <= ~r_running;  //1'b1;
         end
         default: begin
         end
@@ -197,7 +221,7 @@ module Shell (
   end
 
   // Form a command response to a Received Command
-  always @(posedge CLK) begin
+  always @(posedge new_clk) begin
     if (~w_reset) begin
       r_TX_Cmd_Start <= 1'b0;
 
@@ -273,7 +297,7 @@ module Shell (
 
   wire [15:0] w_7seg;
   System hack (
-      .CLK(CLK),
+      .CLK(new_clk),
 
       .bus_RAM_data  (),
       .i_bus_ROM_data(r_RX_Cmd_Data),
@@ -314,7 +338,7 @@ module Shell (
   wire w_TX_Active, w_TX_Serial;
 
   // echo received byte
-  always @(posedge CLK) begin
+  always @(posedge new_clk) begin
     if (w_RX_DV == 1'b1) begin
       r_RX_Byte <= w_RX_Byte;
     end
@@ -336,7 +360,7 @@ module Shell (
 
 
 
-  always @(posedge CLK) begin
+  always @(posedge new_clk) begin
     if (~w_reset) begin
       r_SM_Main <= IDLE;
       r_TX_DV   <= 1'b0;
@@ -395,9 +419,9 @@ module Shell (
   // *4 because we are running at 100mhz, not 25mhz on the go board
 
   UART_RX #(
-      .CLKS_PER_BIT(217 * 4)
+      .CLKS_PER_BIT(217 * 1)
   ) UART_RX_Inst (
-      .i_Clock(CLK),
+      .i_Clock(new_clk),
       .i_Rst_L(w_reset),
       .i_RX_Serial(UART_RX),
       .o_RX_DV(w_RX_DV),
@@ -406,9 +430,9 @@ module Shell (
 
 
   UART_TX #(
-      .CLKS_PER_BIT(217 * 4)
+      .CLKS_PER_BIT(217 * 1)
   ) UART_TX_Inst (
-      .i_Clock    (CLK),
+      .i_Clock    (new_clk),
       .i_TX_DV    (r_TX_DV | w_RX_DV),  // Pass RX to TX module for loopback
       .i_TX_Byte  (w_TX_Byte_Mux),      // Pass RX to TX module for loopback
       .i_Rst_L    (w_reset),
@@ -420,7 +444,7 @@ module Shell (
   // lcd support for debugging
 
   io_lcd io_lcd (
-      .clk(CLK),
+      .clk(new_clk),
       .rst(w_reset),
       .i_digit1(value[0]),
       .i_show_digit1(1'b1),
@@ -450,10 +474,30 @@ module Shell (
   assign LED[6] = leds[6];
   assign LED[7] = leds[7];
 
+  reg [15:0] r_7seg;
+  assign IO_LED[0]  = w_7seg[0];
+  assign IO_LED[1]  = w_7seg[1];
+  assign IO_LED[2]  = w_7seg[2];
+  assign IO_LED[3]  = w_7seg[3];
+  assign IO_LED[4]  = w_7seg[4];
+  assign IO_LED[5]  = w_7seg[5];
+  assign IO_LED[6]  = w_7seg[6];
+  assign IO_LED[7]  = w_7seg[7];
+  assign IO_LED[8]  = w_7seg[8];
+  assign IO_LED[9]  = w_7seg[9];
+  assign IO_LED[10] = w_7seg[10];
+  assign IO_LED[11] = w_7seg[11];
+  assign IO_LED[12] = w_7seg[12];
+  assign IO_LED[13] = w_7seg[13];
+  assign IO_LED[14] = w_7seg[14];
+  assign IO_LED[15] = w_7seg[15];
 
+
+
+  //assign IO_LED[0] = 1;
 
   reg [7:0] r_byte;  // = 8'h42;
-  always @(posedge CLK) begin
+  always @(posedge new_clk) begin
     if (~w_reset) begin
       value[0] <= 0;
       value[1] <= 0;
@@ -470,10 +514,12 @@ module Shell (
 
     end else begin
       if (r_running == 1'b1) begin
-        value[0] <= w_7seg[3:0];
-        value[1] <= w_7seg[7:4];
-        value[2] <= w_7seg[11:8];
-        value[3] <= w_7seg[15:12];
+        r_7seg   <= w_7seg;
+        value[0] <= r_7seg[3:0];
+        value[1] <= r_7seg[7:4];
+        value[2] <= r_7seg[11:8];
+        value[3] <= r_7seg[15:12];
+        //value[2] <= r_RX_Cmd_Length[3:0];
       end else begin
         value[3] <= r_command_state;
         value[2] <= r_RX_Cmd_Length[3:0];

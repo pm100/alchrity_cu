@@ -30,6 +30,12 @@ module System (
       r_run <= 1;
     end
   end
+
+  wire [15:0] w_ROM_data;
+  wire [15:0] w_ROM_addr;
+  wire [15:0] o_ram, o_rom, o_pc_loader, o_pc_cpu, o_ramaddr;
+
+  assign w_ROM_addr = i_mode == 0  /* in shell mode*/ ? bus_ROM_addr : o_pc_cpu;
   // explicit instatiate to get neg edge read
   // and facilitate the r/w interface to the shell
 
@@ -46,14 +52,35 @@ module System (
       .WE(bus_ROM_write),
       .MASK()
   );
+  // reg [15:0] ROM[0:20];
+  // initial begin
+  //   ROM[0] = 16'h04d2;
+  //   ROM[1] = 16'hec10;
+  //   ROM[2] = 16'h4000;
+  //   ROM[3] = 16'he308;
+  //   ROM[4] = 16'h0004;
+  //   ROM[5] = 16'he307;
+
+  // end
+  // assign o_bus_ROM_data = ROM[w_ROM_addr];
+  // always @(posedge CLK) begin
+  //   if (bus_ROM_write) begin
+  //     ROM[bus_ROM_addr] <= i_bus_ROM_data;
+  //   end
+  // end
   // defparam ROM.INIT_0 = 256'h0000111122223333444455556666777788889999aaaabbbbccccddddeeeeffff;
   //   defparam ROM.INIT_1 = 256'h8888ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
   `include "init_rom.inc"
   defparam ROM.READ_MODE = 0; defparam ROM.WRITE_MODE = 0; (* ram_style = "block" *)
   reg [15:0] RAM[0:1000];
-
+  integer i;
+  initial begin
+    for (i = 0; i < 1000; i = i + 1) begin
+      RAM[i] = 16'h0000;
+    end
+  end
   wire [15:0] i_instruction;
-  reg [15:0] r_inst;
+  reg  [15:0] r_inst;
   wire [15:0] i_ram;
   assign i_ram = RAM[o_ramaddr];
   wire [15:0] w_CPU_ROM_addr;
@@ -62,7 +89,7 @@ module System (
   wire w_rom_DV = o_bus_wr;
   //reg r_mode = 0;  // 0 = shell 1 = run
 
-  wire [15:0] o_ram, o_rom, o_pc_loader, o_pc_cpu, o_ramaddr;
+
   wire o_rom_write, o_ram_write, o_bus_wr;
   wire [15:0] w_D, w_A;
   CPU Cpu (
@@ -79,10 +106,9 @@ module System (
   );
 
 
-  wire [15:0] w_ROM_data;
-  wire [15:0] w_ROM_addr;
 
-  assign w_ROM_addr = i_mode == 0  /* in shell mode*/ ? bus_ROM_addr : o_pc_cpu;
+
+
   assign i_instruction = o_bus_ROM_data;
 
   always @(posedge CLK) begin
@@ -100,7 +126,7 @@ module System (
   wire w_io_mapped_write;
   wire w_ram_write;
   assign w_io_mapped_write = w_tolcd;
-  assign w_ram_write = w_io_mapped_write ? o_ram_write : 1'b0;
+  assign w_ram_write = ~w_io_mapped_write ? o_ram_write : 1'b0;
 
   // seven seg display
   // 1 word mapped to 0x4000
@@ -110,7 +136,8 @@ module System (
   assign w_tolcd = o_ramaddr == 16'h4000;
   assign o_7seg  = r_7seg;
   always @(posedge CLK) begin
-    if (w_tolcd && w_ram_write) begin
+    //r_7seg <= 42;
+    if (w_tolcd && o_ram_write) begin
       r_7seg <= o_ram;
     end
   end
