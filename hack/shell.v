@@ -4,6 +4,17 @@
 `include "/work/alchrity_cu/lib/ice40/uart_tx.v"
 `include "/work/alchrity_cu/lib/al_cu/io_lcd.v"
 
+module mux (
+    input [7:0] a,
+    input [7:0] b,
+    inout [7:0] c,
+    input sela,
+    input selb,
+    input selc,
+    output [7:0] y
+);
+  assign y = sela ? a : (selb ? b : (selc ? c : 8'h00));
+endmodule
 `default_nettype none
 
 module Shell (
@@ -11,6 +22,7 @@ module Shell (
     output UART_TX,
     input UART_RX,
     input RST,  // low is reset
+    // input i_sim_mo
 
     output [ 3:0] IO_AN,
     output [ 7:0] IO_SEG,
@@ -21,12 +33,23 @@ module Shell (
 
 );
   wire new_clk;
-  Shell_pll Shell_pll_inst (
-      .REFERENCECLK(CLK),
-      .PLLOUTCORE(new_clk),
-      .PLLOUTGLOBAL(),
-      .RESET(RST)
+
+`ifdef __ICARUS__x
+  assign new_clk = CLK;
+`else
+
+  // Shell_pll Shell_pll_inst (
+  //     .REFERENCECLK(CLK),
+  //     .PLLOUTCORE(new_clk),
+  //     .PLLOUTGLOBAL(),
+  //     .RESET(RST)
+  // );
+  clock_divider clock_divider_inst (
+      .clk(CLK),
+      // .RST(RST),
+      .clk_out(new_clk)
   );
+`endif
 
   reg [3:0] r_pll_reset;
   initial begin
@@ -62,7 +85,7 @@ module Shell (
   wire w_Bus_CS;
   wire i_Bus_Rd_DV;
   reg [15:0] r_Bus_Rd_Data;
-  reg r_Bus_Wr_Rd_n;
+
 
   `include "../lib/ice40/hex_ascii.v"
   // address read from coomand for read or write
@@ -199,7 +222,7 @@ module Shell (
   // // Perform a read or write to Bus based on cmd from UART
   always @(posedge new_clk) begin
     if (~w_reset) begin
-      r_running <= 1'b0;
+
     end else if (r_command_processed) begin
       r_bus_write <= 0;
       case (r_command_state)
@@ -209,7 +232,7 @@ module Shell (
           r_bus_write <= 1;
         end
         RUN: begin
-          r_running <= ~r_running;  //1'b1;
+          //1'b1;
         end
         default: begin
         end
@@ -224,10 +247,11 @@ module Shell (
   always @(posedge new_clk) begin
     if (~w_reset) begin
       r_TX_Cmd_Start <= 1'b0;
-
+      r_running <= 1'b0;
     end else begin
       r_TX_Cmd_Start <= 1'b0;
       r_command_completed <= 0;
+      // r_running <= 1'b0;
       // Erroneous Command Response
       case (r_command_state)
         ERROR: begin
@@ -289,6 +313,7 @@ module Shell (
           r_TX_Cmd_Length   <= 6;
           r_TX_Cmd_Start    <= 1'b1;
           r_command_completed <= 1;
+          r_running <= ~r_running;
         end
       endcase
     end
@@ -296,6 +321,8 @@ module Shell (
   // the hack system we are running
 
   wire [15:0] w_7seg;
+  wire [7:0] w_sys_tx_byte;
+  wire w_sys_byte_ready_to_send;
   System hack (
       .CLK(new_clk),
 
@@ -312,7 +339,14 @@ module Shell (
 
       .o_7seg(w_7seg),
 
-      .i_mode(r_running)
+      // uart interface
+      .o_UART_byte(w_sys_tx_byte),
+      .o_UART_byte_ready(w_sys_byte_ready_to_send),
+      .i_UART_byte_sent(),
+      .i_UART_byte(),
+      .i_UART_byte_ready(),
+
+      .i_mode(r_running && r_SM_Main == IDLE)
 
   );
   //==============================================================================
@@ -328,7 +362,17 @@ module Shell (
 
   // are we echoing or talking ourselves
   wire [7:0] w_TX_Byte_Mux;
-  assign w_TX_Byte_Mux = w_RX_DV ? w_RX_Byte : r_TX_Byte;
+
+  mux mux_tx (
+      .a(r_TX_Byte),  // shell send byte
+      .b(w_RX_Byte),  // received byte - for echo
+      .c(w_sys_tx_byte),  // hack send byte
+      .sela(~w_RX_DV & ~r_running),
+      .selb(w_RX_DV & ~r_running),  // echo when in shell mode
+      .selc(r_running),  // hack mode
+      .y(w_TX_Byte_Mux)
+  );
+  //assign w_TX_Byte_Mux = w_RX_DV ? w_RX_Byte : r_TX_Byte;
 
   // Drive UART line high when transmitter is not active
   assign UART_TX = w_TX_Active ? w_TX_Serial : 1'b1;
@@ -358,16 +402,19 @@ module Shell (
   wire       w_TX_Done;
   reg  [2:0] r_SM_Main;  //= IDLE;
 
-
+  reg        r_run_command_completed;
 
   always @(posedge new_clk) begin
     if (~w_reset) begin
       r_SM_Main <= IDLE;
-      r_TX_DV   <= 1'b0;
+      r_TX_DV <= 1'b0;
+      r_run_command_completed <= 0;
+
     end else begin
 
       // Default Assignments
       r_TX_DV <= 1'b0;
+      r_run_command_completed <= 0;
 
       case (r_SM_Main)
         IDLE: begin
@@ -407,7 +454,12 @@ module Shell (
           end
         end
 
-        TX_DONE: r_SM_Main <= IDLE;
+        TX_DONE: begin
+          r_SM_Main <= IDLE;
+          if (r_command_completed == 1) begin
+            r_run_command_completed <= 1;
+          end
+        end
 
         default: r_SM_Main <= IDLE;
 
@@ -417,6 +469,7 @@ module Shell (
   end
 
   // *4 because we are running at 100mhz, not 25mhz on the go board
+  // or not!
 
   UART_RX #(
       .CLKS_PER_BIT(217 * 1)
@@ -430,15 +483,16 @@ module Shell (
 
 
   UART_TX #(
-      .CLKS_PER_BIT(217 * 1)
+      .CLOCK_SPEED(25_000_000),
+      .BAUD_RATE  (115_200)
   ) UART_TX_Inst (
-      .i_Clock    (new_clk),
-      .i_TX_DV    (r_TX_DV | w_RX_DV),  // Pass RX to TX module for loopback
-      .i_TX_Byte  (w_TX_Byte_Mux),      // Pass RX to TX module for loopback
-      .i_Rst_L    (w_reset),
+      .i_Clock(new_clk),
+      .i_TX_DV(r_TX_DV | w_RX_DV | w_sys_byte_ready_to_send),  // Pass RX to TX module for loopback
+      .i_TX_Byte(w_TX_Byte_Mux),  // Pass RX to TX module for loopback
+      .i_Rst_L(w_reset),
       .o_TX_Active(w_TX_Active),
       .o_TX_Serial(w_TX_Serial),
-      .o_TX_Done  (w_TX_Done)
+      .o_TX_Done(w_TX_Done)
   );
 
   // lcd support for debugging

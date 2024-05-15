@@ -12,6 +12,10 @@ D=A
 D=M
 @16384
 M=D
+@0048
+D=A
+@16385
+M=D
 (halts)
 @halts
 D;JMP

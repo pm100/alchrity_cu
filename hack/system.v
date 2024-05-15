@@ -18,6 +18,13 @@ module System (
 
     output [15:0] o_7seg,
 
+    // uart interface
+    output [7:0] o_UART_byte,
+    output o_UART_byte_ready,
+    input i_UART_byte_sent,
+    input [7:0] i_UART_byte,
+    input i_UART_byte_ready,
+
     input i_mode
 
 );
@@ -71,14 +78,20 @@ module System (
   // defparam ROM.INIT_0 = 256'h0000111122223333444455556666777788889999aaaabbbbccccddddeeeeffff;
   //   defparam ROM.INIT_1 = 256'h8888ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
   `include "init_rom.inc"
-  defparam ROM.READ_MODE = 0; defparam ROM.WRITE_MODE = 0; (* ram_style = "block" *)
+  defparam ROM.READ_MODE = 0;
+  //
+  defparam ROM.WRITE_MODE = 0;
+  //
+  (* ram_style = "block" *)
   reg [15:0] RAM[0:1000];
+
   integer i;
   initial begin
     for (i = 0; i < 1000; i = i + 1) begin
       RAM[i] = 16'h0000;
     end
   end
+
   wire [15:0] i_instruction;
   reg  [15:0] r_inst;
   wire [15:0] i_ram;
@@ -105,17 +118,12 @@ module System (
       .o_D(w_D)
   );
 
-
-
-
-
   assign i_instruction = o_bus_ROM_data;
 
   always @(posedge CLK) begin
     if (w_ram_write) begin
       RAM[o_ramaddr] <= o_ram;
     end
-    //r_inst <= o_bus_ROM_data;
   end
 
 
@@ -142,7 +150,31 @@ module System (
     end
   end
 
+  // uart read write
+  // inout byte mapped to 0x4001 lo
+  // status byte mapped to 0x4001 hi
 
+  wire w_touart;
+  reg [7:0] r_uart_byte;
+  reg r_uart_byte_sent;
+  reg r_uart_byte_read;
+  reg r_send_byte;
+  assign w_touart = o_ramaddr == 16'h4001;
+  assign o_UART_byte = r_uart_byte;
+  assign o_UART_byte_ready = r_send_byte;
+  always @(posedge CLK) begin
+    r_send_byte <= 0;
+    if (w_touart && o_ram_write) begin
+      r_uart_byte <= o_ram[7:0];
+      r_uart_byte_sent <= 1'b0;
+      r_uart_byte_read <= 1'b0;
+      // tell shell to send it
+      r_send_byte <= 1;
+    end
+    if (i_UART_byte_sent) begin
+      r_uart_byte_sent <= 1;
+    end
+  end
 
 
 
